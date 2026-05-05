@@ -1,7 +1,11 @@
 import { BsFuelPumpFill } from "react-icons/bs";
 import { IoAdd } from "react-icons/io5";
+import { abastecimentos } from "../utils/data";
 
 export default function Home() {
+    const totalAbastecimentos = abastecimentos.length
+    const totalGasto = abastecimentos.reduce((total, abastecimento) => total + abastecimento.valorTotal, 0)
+
     return (
         <div className="min-h-screen flex justify-center bg-fundo relative">
             <div className="flex flex-col gap-10 pb-32">
@@ -27,20 +31,39 @@ export default function Home() {
                     <div className="flex flex-row gap-5">
                         <div className="flex flex-col flex-1 bg-card-secundario justify-center items-center py-6 px-3 rounded-2xl">
                             <p className="text-titulo-secundario text-xs font-medium mb-2 text-center leading-tight">Total de abastecimentos</p>
-                            <p className="text-titulo-primario text-2xl font-bold">0</p>
+                            <p className="text-titulo-primario text-2xl font-bold">{totalAbastecimentos}</p>
                         </div>
                         <div className="flex flex-col flex-1 bg-card-secundario justify-center items-center py-6 px-3 rounded-2xl">
                             <p className="text-titulo-secundario text-xs font-medium mb-2 text-center leading-tight">Total gasto</p>
-                            <p className="text-titulo-primario text-2xl font-bold">R$ 0</p>
+                            <p className="text-titulo-primario text-2xl font-bold">R$ {totalGasto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                         </div>
                     </div>
 
                 </div>
                     <div>
                         <p className="text-titulo-secundario uppercase tracking-widest text-sm">Abastecimentos recentes</p>
-                        <div>
-
-                        </div>
+                        {abastecimentos.map((abastecimento) => (
+                            <div key={abastecimento.id}>
+                                <div>
+                                    <p>{abastecimento.data}</p>
+                                    <div>
+                                        <p>Posto de Gasolina</p>
+                                        <h2>{abastecimento.posto}</h2>
+                                    </div>
+                                    <p>{abastecimento.consumoKml}</p>
+                                </div>
+                                <div>
+                                    <p>Litros</p>
+                                    <p>Valor</p>
+                                    <p>Odômetro</p>
+                                </div>
+                                <div>
+                                    <p>{abastecimento.litros}L</p>
+                                    <p>{abastecimento.valorTotal}</p>
+                                    <p>{abastecimento.kmAtual}</p>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 <div className="fixed bottom-8 left-0 right-0 flex justify-center px-6 pointer-events-none">
                     <button className="flex flex-row justify-center items-center gap-2 bg-destaque w-full max-w-[400px] text-fundo font-bold text-lg rounded-2xl p-4 shadow-[0_0_20px_rgba(57,255,20,0.3)] pointer-events-auto hover:scale-[1.02] transition-transform active:scale-95">
