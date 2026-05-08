@@ -3,6 +3,7 @@ import { IoAdd } from "react-icons/io5";
 import { useEffect, useState } from "react";
 import ModalAbastecimento from "../components/ModalAbastecimento";
 import { supabase } from "../utils/supabase";
+import { useNavigate } from "react-router-dom";
 
 function formatarData(dataISO) {
     const data = new Date(dataISO);
@@ -16,6 +17,13 @@ function formatarData(dataISO) {
     return `${dia} de ${mes}, ${ano} às ${horas}:${minutos}`;
 }
 
+function getMesAtualFormatado() {
+    const agora = new Date();
+    const ano = agora.getUTCFullYear();
+    const mes = String(agora.getUTCMonth() + 1).padStart(2, '0');
+    return `${ano}-${mes}`;
+}
+
 export default function Home() {
     // STATES
     const [modalIsOpen, setModalIsOpen] = useState(false)
@@ -26,16 +34,43 @@ export default function Home() {
     const [kmAtual, setKmAtual] = useState(0)
     const [abastecimentos, setAbastecimentos] = useState([])
     const [isSaving, setIsSaving] = useState(false)
+    const [mesSelecionado, setMesSelecionado] = useState(getMesAtualFormatado())
+
+    const navigate = useNavigate()
+
+    useEffect(() => {
+        validarUsuario()
+    }, [])
 
     useEffect(() => {
         buscarDados()
-    }, [])
+    }, [mesSelecionado])
+    
+    async function validarUsuario () {
+        try {
+            const { data, error } = await supabase.auth.getUser()
+
+            if (!data.user) {
+                navigate("/login")
+                throw new Error("Necessário fazer login")
+            }
+        } catch (error) {
+            alert(error.message)
+        }
+    }
 
     async function buscarDados() {
         try {
+            const [ano, mes] = mesSelecionado.split('-').map(Number);
+            const inicioMes = new Date(Date.UTC(ano, mes - 1, 1, 0, 0, 0));
+            const inicioProximoMes = new Date(Date.UTC(ano, mes, 1, 0, 0, 0));
+
             const { data: dadosRetornados, error } = await supabase
                 .from('abastecimentos')
-                .select('*') 
+                .select('*')
+                .gte('data', inicioMes.toISOString())
+                .lt('data', inicioProximoMes.toISOString())
+                .order('data', { ascending: false })
             
             if (error) {
                 throw new Error('Erro do Supabase: ' + error.message)
@@ -46,6 +81,7 @@ export default function Home() {
             alert("Ocorreu um erro: " + error.message)
         }
     }
+
 
     async function salvarAbastecimento() {
         setIsSaving(true)
@@ -74,7 +110,8 @@ export default function Home() {
             const { data: dadosInseridos, error } = await supabase
                 .from('abastecimentos')
                 .insert([
-                    {
+                    {   
+                        user_id: session.user.id ,
                         posto: posto,
                         litros: novosLitros,
                         valor: Number(valor), 
@@ -122,9 +159,9 @@ export default function Home() {
     }
 
     return (
-        <div className="min-h-screen flex justify-center bg-fundo relative">
-            <div className="flex flex-col gap-10 pb-32">
-                <div className="flex flex-row justify-between mt-10 items-center">
+        <div className="min-h-screen flex justify-center bg-fundo relative px-4 sm:px-6">
+            <div className="w-full max-w-2xl flex flex-col gap-8 sm:gap-10 pb-32">
+                <div className="flex flex-row justify-between mt-8 sm:mt-10 items-center">
                     <div className="flex flex-col gap-1">
                         <h1 className="text-titulo-primario text-2xl font-bold">GasTrack</h1>
                         <p className="text-descricao text-sm">Gestão de abastecimentos</p>
@@ -133,7 +170,7 @@ export default function Home() {
                         <BsFuelPumpFill className="text-destaque border rounded-xl p-3 size-12"/>
                     </div>
                 </div>
-                <div className="flex flex-col gap-6 border border-borda shadow-[inset_0_1px_0_rgba(57,255,20,0.15)] rounded-3xl px-7 pb-7 pt-2 bg-card/50">
+                <div className="flex flex-col gap-6 border border-borda shadow-[inset_0_1px_0_rgba(57,255,20,0.15)] rounded-3xl px-5 sm:px-7 pb-6 sm:pb-7 pt-2 bg-card/50">
                     <h2 className="text-xs font-bold text-titulo-secundario uppercase tracking-widest mt-5">Consumo médio</h2>
                     
                     {/* Exibindo o Consumo ou os tracinhos de placeholder caso não haja dados suficientes */}
@@ -149,7 +186,7 @@ export default function Home() {
                         <span className="text-titulo-secundario text-2xl font-medium ml-1">km/l</span>
                     </div>
 
-                    <div className="flex flex-row gap-5">
+                    <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
                         <div className="flex flex-col flex-1 bg-card-secundario justify-center items-center py-6 px-3 rounded-2xl">
                             <p className="text-titulo-secundario text-xs font-medium mb-2 text-center leading-tight">Total de abastecimentos</p>
                             <p className="text-titulo-primario text-2xl font-bold">{totalAbastecimentos}</p>
@@ -162,11 +199,25 @@ export default function Home() {
 
                 </div>
                     <div>
-                        <p className="text-titulo-secundario uppercase tracking-widest text-sm mb-5">Abastecimentos recentes</p>
+                        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 sm:gap-4 mb-5">
+                            <p className="text-titulo-secundario uppercase tracking-widest text-sm">Histórico do mês</p>
+                            <div className="w-full sm:w-auto flex flex-col gap-2 bg-card/50 border border-borda rounded-xl px-3 py-2 shadow-[inset_0_1px_0_rgba(57,255,20,0.08)]">
+                                <label htmlFor="mes-filtro" className="text-titulo-secundario text-[11px] font-semibold uppercase tracking-wider">
+                                    Filtrar por mês
+                                </label>
+                                <input
+                                    id="mes-filtro"
+                                    type="month"
+                                    value={mesSelecionado}
+                                    onChange={(e) => setMesSelecionado(e.target.value)}
+                                    className="w-full sm:w-auto bg-card-secundario border border-borda rounded-lg px-3 py-2 text-titulo-primario text-sm font-medium outline-none focus:border-destaque focus:ring-2 focus:ring-destaque/30"
+                                />
+                            </div>
+                        </div>
                         {abastecimentos.map((abastecimento) => (
                             <div key={abastecimento.id} className="bg-card/40 p-4 border-b border-card-secundario flex flex-col gap-2">
                                     <p className="text-descricao">{formatarData(abastecimento.data)}</p>
-                                <div className="flex flex-row justify-between items-center">
+                                <div className="flex flex-row justify-between items-center gap-3">
                                     <div className="flex flex-col">
                                         <p className="text-titulo-secundario">Posto de Gasolina</p>
                                         <h2 className="text-titulo-primario">{abastecimento.posto}</h2>
@@ -178,7 +229,7 @@ export default function Home() {
                                     <p className="text-descricao">Valor</p>
                                     <p className="text-descricao">Odômetro</p>
                                 </div>
-                                <div className="flex flex-row justify-between text-titulo-primario text-lg">
+                                <div className="flex flex-row justify-between text-titulo-primario text-base sm:text-lg gap-2">
                                     <p>{abastecimento.litros}<span className="text-titulo-secundario text-sm">L</span></p>
                                     <p className="text-destaque">R$ {abastecimento.valor}</p>
                                     <p>{abastecimento.km_atual}<span className="text-titulo-secundario text-sm">km</span></p>
@@ -186,8 +237,8 @@ export default function Home() {
                             </div>
                         ))}
                     </div>
-                <div className="fixed bottom-8 left-0 right-0 flex justify-center px-6 pointer-events-none">
-                    <button className="flex flex-row justify-center items-center gap-2 bg-destaque w-full max-w-[400px] text-fundo font-bold text-lg rounded-2xl p-4 shadow-[0_0_20px_rgba(57,255,20,0.3)] pointer-events-auto hover:scale-[1.02] transition-transform active:scale-95"
+                <div className="fixed bottom-6 sm:bottom-8 left-0 right-0 flex justify-center px-4 sm:px-6 pointer-events-none">
+                    <button className="flex flex-row justify-center items-center gap-2 bg-destaque w-full max-w-[420px] text-fundo font-bold text-base sm:text-lg rounded-2xl p-4 shadow-[0_0_20px_rgba(57,255,20,0.3)] pointer-events-auto hover:scale-[1.02] transition-transform active:scale-95"
                     onClick={() => setModalIsOpen(true)}
                     >
                         <IoAdd className="size-7"/>

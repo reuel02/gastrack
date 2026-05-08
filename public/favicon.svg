@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="pumpBody" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#39ff14"/>
+      <stop offset="100%" stop-color="#22b30d"/>
+    </linearGradient>
+  </defs>
+  <rect x="14" y="8" width="30" height="48" rx="6" fill="#101418"/>
+  <rect x="18" y="12" width="22" height="40" rx="4" fill="url(#pumpBody)"/>
+  <rect x="22" y="17" width="14" height="10" rx="2" fill="#101418"/>
+  <rect x="24" y="30" width="10" height="15" rx="2" fill="#101418"/>
+  <path d="M44 16h3c4 0 7 3 7 7v13c0 3-2 5-5 5h-1v-4h1c1 0 1-1 1-1V23c0-2-1-3-3-3h-3z" fill="#39ff14"/>
+  <circle cx="31" cy="22" r="2" fill="#39ff14"/>
+  <rect x="12" y="54" width="34" height="4" rx="2" fill="#39ff14"/>
+</svg>
