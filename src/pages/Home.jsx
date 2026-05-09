@@ -1,6 +1,6 @@
 import { BsFuelPumpFill } from "react-icons/bs";
-import { IoAdd } from "react-icons/io5";
-import { useEffect, useState } from "react";
+import { IoAdd, IoCreateOutline, IoTrashOutline } from "react-icons/io5";
+import { useCallback, useEffect, useState } from "react";
 import ModalAbastecimento from "../components/ModalAbastecimento";
 import { supabase } from "../utils/supabase";
 import { useNavigate } from "react-router-dom";
@@ -24,64 +24,96 @@ function getMesAtualFormatado() {
     return `${ano}-${mes}`;
 }
 
+function formatDateForDatetimeLocal(value) {
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function Home() {
     // STATES
     const [modalIsOpen, setModalIsOpen] = useState(false)
+    const [editingId, setEditingId] = useState(null)
     const [posto, setPosto] = useState("")
     const [litros, setLitros] = useState(0)
     const [valor, setValor] = useState(0)
-    const [data, setData] = useState(new Date())
+    const [data, setData] = useState(() => formatDateForDatetimeLocal(new Date()))
     const [kmAtual, setKmAtual] = useState(0)
     const [abastecimentos, setAbastecimentos] = useState([])
     const [isSaving, setIsSaving] = useState(false)
     const [mesSelecionado, setMesSelecionado] = useState(getMesAtualFormatado())
+    const [deletingId, setDeletingId] = useState(null)
 
     const navigate = useNavigate()
 
-    useEffect(() => {
-        validarUsuario()
-    }, [])
-
-    useEffect(() => {
-        buscarDados()
-    }, [mesSelecionado])
-    
-    async function validarUsuario () {
+    const buscarDados = useCallback(async () => {
         try {
-            const { data, error } = await supabase.auth.getUser()
+            const {
+                data: { session },
+                error: sessionError,
+            } = await supabase.auth.getSession();
 
-            if (!data.user) {
-                navigate("/login")
-                throw new Error("Necessário fazer login")
+            if (sessionError || !session?.user) {
+                navigate("/login");
+                return;
             }
-        } catch (error) {
-            alert(error.message)
-        }
-    }
 
-    async function buscarDados() {
-        try {
-            const [ano, mes] = mesSelecionado.split('-').map(Number);
+            const [ano, mes] = mesSelecionado.split("-").map(Number);
             const inicioMes = new Date(Date.UTC(ano, mes - 1, 1, 0, 0, 0));
             const inicioProximoMes = new Date(Date.UTC(ano, mes, 1, 0, 0, 0));
 
             const { data: dadosRetornados, error } = await supabase
-                .from('abastecimentos')
-                .select('*')
-                .gte('data', inicioMes.toISOString())
-                .lt('data', inicioProximoMes.toISOString())
-                .order('data', { ascending: false })
-            
+                .from("abastecimentos")
+                .select("*")
+                .eq("user_id", session.user.id)
+                .gte("data", inicioMes.toISOString())
+                .lt("data", inicioProximoMes.toISOString())
+                .order("data", { ascending: false });
+
             if (error) {
-                throw new Error('Erro do Supabase: ' + error.message)
+                throw new Error("Erro do Supabase: " + error.message);
             }
 
-            setAbastecimentos(dadosRetornados)
+            setAbastecimentos(dadosRetornados ?? []);
         } catch (error) {
-            alert("Ocorreu um erro: " + error.message)
+            alert("Ocorreu um erro: " + error.message);
         }
+    }, [mesSelecionado, navigate]);
+
+    useEffect(() => {
+        buscarDados();
+    }, [buscarDados]);
+
+    function fecharModal() {
+        setModalIsOpen(false);
+        setEditingId(null);
+        setPosto("");
+        setLitros(0);
+        setValor(0);
+        setData(formatDateForDatetimeLocal(new Date()));
+        setKmAtual(0);
     }
 
+    function abrirModalNovo() {
+        setEditingId(null);
+        setPosto("");
+        setLitros(0);
+        setValor(0);
+        setData(formatDateForDatetimeLocal(new Date()));
+        setKmAtual(0);
+        setModalIsOpen(true);
+    }
+
+    function abrirModalEditar(abastecimento) {
+        setEditingId(abastecimento.id);
+        setPosto(abastecimento.posto ?? "");
+        setLitros(abastecimento.litros ?? 0);
+        setValor(abastecimento.valor ?? 0);
+        setData(formatDateForDatetimeLocal(abastecimento.data));
+        setKmAtual(abastecimento.km_atual ?? 0);
+        setModalIsOpen(true);
+    }
 
     async function salvarAbastecimento() {
         setIsSaving(true)
@@ -93,46 +125,83 @@ export default function Home() {
             const novosLitros = Number(litros);
             let consumoCalculado = 0;
 
-            // Se já existirem abastecimentos, pegamos o hodômetro do último para calcular o consumo
-            if (abastecimentos.length > 0) {
-                // Ordenamos para ter certeza de pegar o maior KM registrado até agora
-                const absOrdenados = [...abastecimentos].sort((a, b) => a.km_atual - b.km_atual);
+            const listaParaCalculo = editingId
+                ? abastecimentos.filter((a) => a.id !== editingId)
+                : abastecimentos;
+
+            if (listaParaCalculo.length > 0) {
+                const absOrdenados = [...listaParaCalculo].sort((a, b) => a.km_atual - b.km_atual);
                 const ultimoAbs = absOrdenados[absOrdenados.length - 1];
                 const kmAnterior = ultimoAbs.km_atual;
 
-                // Só calcula se o KM novo for maior que o anterior e tiver litros
                 if (novoKm > kmAnterior && novosLitros > 0) {
                     const distanciaPercorrida = novoKm - kmAnterior;
                     consumoCalculado = Number((distanciaPercorrida / novosLitros).toFixed(1));
                 }
             }
 
-            const { data: dadosInseridos, error } = await supabase
-                .from('abastecimentos')
-                .insert([
-                    {   
-                        user_id: session.user.id ,
-                        posto: posto,
-                        litros: novosLitros,
-                        valor: Number(valor), 
-                        data: data,
-                        km_atual: novoKm,
-                        consumo_kml: consumoCalculado
-                    }
-                ])
-            
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+            if (sessionError || !session?.user) {
+                throw new Error('Sessão expirada. Faça login novamente.')
+            }
+
+            const payload = {
+                posto,
+                litros: novosLitros,
+                valor: Number(valor),
+                data,
+                km_atual: novoKm,
+                consumo_kml: consumoCalculado,
+            };
+
+            let error;
+            if (editingId) {
+                const res = await supabase
+                    .from("abastecimentos")
+                    .update(payload)
+                    .eq("id", editingId);
+                error = res.error;
+            } else {
+                const res = await supabase.from("abastecimentos").insert([
+                    {
+                        ...payload,
+                        user_id: session.user.id,
+                    },
+                ]);
+                error = res.error;
+            }
+
             if (error) {
                 throw new Error('Erro ao salvar no Supabase: ' + error.message)
             }
 
-            alert("Abastecimento salvo com sucesso!")
-            setModalIsOpen(false)
+            alert(editingId ? "Abastecimento atualizado!" : "Abastecimento salvo com sucesso!")
+            fecharModal()
             buscarDados()
 
         } catch (error) {
             alert("Ocorreu um erro: " + error.message)
         } finally {
             setIsSaving(false)
+        }
+    }
+
+    async function excluirAbastecimento(id) {
+        if (!window.confirm("Excluir este abastecimento? Esta ação não pode ser desfeita.")) {
+            return;
+        }
+        setDeletingId(id);
+        try {
+            const { error } = await supabase.from("abastecimentos").delete().eq("id", id);
+
+            if (error) {
+                throw new Error(error.message);
+            }
+            await buscarDados();
+        } catch (error) {
+            alert("Não foi possível excluir: " + error.message);
+        } finally {
+            setDeletingId(null);
         }
     }
 
@@ -214,9 +283,36 @@ export default function Home() {
                                 />
                             </div>
                         </div>
+                        {abastecimentos.length === 0 ? (
+                            <p className="text-descricao text-sm py-6 text-center">
+                                Nenhum abastecimento neste mês.
+                            </p>
+                        ) : null}
                         {abastecimentos.map((abastecimento) => (
                             <div key={abastecimento.id} className="bg-card/40 p-4 border-b border-card-secundario flex flex-col gap-2">
+                                <div className="flex flex-row justify-between items-start gap-2">
                                     <p className="text-descricao">{formatarData(abastecimento.data)}</p>
+                                    <div className="flex shrink-0 items-center gap-0.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => abrirModalEditar(abastecimento)}
+                                            disabled={deletingId === abastecimento.id}
+                                            className="rounded-lg p-2 text-titulo-secundario hover:text-destaque hover:bg-destaque/10 border border-transparent hover:border-destaque/25 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                                            aria-label="Editar abastecimento"
+                                        >
+                                            <IoCreateOutline className="size-5" aria-hidden />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => excluirAbastecimento(abastecimento.id)}
+                                            disabled={deletingId === abastecimento.id}
+                                            className="rounded-lg p-2 text-titulo-secundario hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/25 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                                            aria-label="Excluir abastecimento"
+                                        >
+                                            <IoTrashOutline className="size-5" aria-hidden />
+                                        </button>
+                                    </div>
+                                </div>
                                 <div className="flex flex-row justify-between items-center gap-3">
                                     <div className="flex flex-col">
                                         <p className="text-titulo-secundario">Posto de Gasolina</p>
@@ -239,7 +335,7 @@ export default function Home() {
                     </div>
                 <div className="fixed bottom-6 sm:bottom-8 left-0 right-0 flex justify-center px-4 sm:px-6 pointer-events-none">
                     <button className="flex flex-row justify-center items-center gap-2 bg-destaque w-full max-w-[420px] text-fundo font-bold text-base sm:text-lg rounded-2xl p-4 shadow-[0_0_20px_rgba(57,255,20,0.3)] pointer-events-auto hover:scale-[1.02] transition-transform active:scale-95"
-                    onClick={() => setModalIsOpen(true)}
+                    onClick={abrirModalNovo}
                     >
                         <IoAdd className="size-7"/>
                         Adicionar Abastecimento
@@ -248,7 +344,23 @@ export default function Home() {
             </div>
 
             {modalIsOpen && (
-                <ModalAbastecimento onClose={setModalIsOpen} posto={posto} setPosto={setPosto} litros={litros} setLitros={setLitros} valor={valor} setValor={setValor} data={data} setData={setData} kmAtual={kmAtual} setKmAtual={setKmAtual} salvarAbastecimento={salvarAbastecimento} isSaving={isSaving}/>
+                <ModalAbastecimento
+                    onClose={fecharModal}
+                    modalTitulo={editingId ? "Editar abastecimento" : "Novo abastecimento"}
+                    salvarLabel={editingId ? "Salvar alterações" : "Salvar abastecimento"}
+                    posto={posto}
+                    setPosto={setPosto}
+                    litros={litros}
+                    setLitros={setLitros}
+                    valor={valor}
+                    setValor={setValor}
+                    data={data}
+                    setData={setData}
+                    kmAtual={kmAtual}
+                    setKmAtual={setKmAtual}
+                    salvarAbastecimento={salvarAbastecimento}
+                    isSaving={isSaving}
+                />
             )}
         </div>
     )
